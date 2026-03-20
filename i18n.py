@@ -24,6 +24,8 @@ TRANSLATIONS = {
         "install": "🚀 Install Packages",
         "drop_zone": "📂 Drag & Drop WHL files here\nor use buttons below",
         "added_files": "Added {count} file(s)",
+        "search_pypi": "🔍 Search on PyPI",
+        "search_hint": "Enter package name to search on PyPI...",
         
         # Validation
         "validation_results": "Validation Results",
@@ -57,6 +59,21 @@ TRANSLATIONS = {
         "package": "Package",
         "version": "Version",
         "clear_history": "🗑 Clear History",
+        "export": "📤 Export",
+        "export_history": "Export History",
+        "select_format": "Select format:",
+        "txt_format": "TXT (requirements.txt)",
+        "json_format": "JSON",
+        "csv_format": "CSV",
+        "export_success": "History exported successfully",
+        "export_error": "Error exporting history",
+        
+        # Notifications
+        "notifications": "Notifications",
+        "notifications_enabled": "Notifications enabled",
+        "notifications_disabled": "Notifications disabled",
+        "debug_mode": "Debug Mode",
+        "debug_hint": "Restart app after changing",
         
         # Common
         "log_frame": "Log",
@@ -107,6 +124,8 @@ TRANSLATIONS = {
         "install": "🚀 安装包",
         "drop_zone": "📂 将 WHL 文件拖放到此处\n或使用下方按钮",
         "added_files": "已添加 {count} 个文件",
+        "search_pypi": "🔍 在 PyPI 上搜索",
+        "search_hint": "输入包名称在 PyPI 上搜索...",
         
         # Uninstall tab
         "installed_packages": "已安装的包",
@@ -135,6 +154,21 @@ TRANSLATIONS = {
         "package": "包",
         "version": "版本",
         "clear_history": "🗑 清除历史",
+        "export": "📤 导出",
+        "export_history": "导出历史",
+        "select_format": "选择格式:",
+        "txt_format": "TXT (requirements.txt)",
+        "json_format": "JSON",
+        "csv_format": "CSV",
+        "export_success": "历史导出成功",
+        "export_error": "导出历史时出错",
+        
+        # Notifications
+        "notifications": "通知",
+        "notifications_enabled": "通知已启用",
+        "notifications_disabled": "通知已禁用",
+        "debug_mode": "调试模式",
+        "debug_hint": "更改后需重启应用",
         
         # Common
         "log_frame": "日志",
@@ -185,6 +219,8 @@ TRANSLATIONS = {
         "install": "🚀 Установить пакеты",
         "drop_zone": "📂 Перетащите WHL файлы сюда\nили используйте кнопки ниже",
         "added_files": "Добавлено {count} файл(ов)",
+        "search_pypi": "🔍 Поиск на PyPI",
+        "search_hint": "Введите название пакета для поиска на PyPI...",
         
         # Uninstall tab
         "installed_packages": "Установленные пакеты",
@@ -213,6 +249,21 @@ TRANSLATIONS = {
         "package": "Пакет",
         "version": "Версия",
         "clear_history": "🗑 Очистить историю",
+        "export": "📤 Экспорт",
+        "export_history": "Экспорт истории",
+        "select_format": "Выберите формат:",
+        "txt_format": "TXT (requirements.txt)",
+        "json_format": "JSON",
+        "csv_format": "CSV",
+        "export_success": "История успешно экспортирована",
+        "export_error": "Ошибка экспорта истории",
+        
+        # Notifications
+        "notifications": "Уведомления",
+        "notifications_enabled": "Уведомления включены",
+        "notifications_disabled": "Уведомления выключены",
+        "debug_mode": "Режим отладки",
+        "debug_hint": "После изменения требуется перезапуск",
         
         # Common
         "log_frame": "Лог",

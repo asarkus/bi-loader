@@ -421,3 +421,166 @@ class WheelInstaller:
                 updates.append(update_info)
         
         return updates
+
+    def search_pypi(self, query, callback=None):
+        import urllib.request
+        import json
+        
+        def log(msg):
+            if callback:
+                callback(msg)
+        
+        log(f"Searching PyPI for: {query}")
+        
+        try:
+            url = f"https://pypi.org/search/?q={query}"
+            log(f"Search URL: {url}")
+            
+            req = urllib.request.Request(url, headers={'User-Agent': 'BI Loader'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                html = response.read().decode('utf-8')
+            
+            import re
+            results = []
+            
+            package_pattern = r'<a class="package-snippet"[^>]*href="/project/([^/]+)/"[^>]*>.*?<span class="package-snippet__name">([^<]+)</span>.*?<span class="package-snippet__version">([^<]+)</span>'
+            
+            matches = re.findall(package_pattern, html, re.DOTALL)
+            
+            for match in matches[:10]:
+                name, _, version = match[:3]
+                results.append({
+                    'name': name.strip(),
+                    'version': version.strip() if version else 'unknown'
+                })
+            
+            if not results:
+                url2 = f"https://pypi.org/pypi/{query}/json"
+                try:
+                    req2 = urllib.request.Request(url2, headers={'User-Agent': 'BI Loader'})
+                    with urllib.request.urlopen(req2, timeout=10) as response:
+                        data = json.loads(response.read().decode('utf-8'))
+                        info = data.get('info', {})
+                        results.append({
+                            'name': info.get('name', query),
+                            'version': info.get('version', 'unknown'),
+                            'summary': info.get('summary', ''),
+                            'description': info.get('description', '')[:200]
+                        })
+                except:
+                    pass
+            
+            return results
+        
+        except Exception as e:
+            log(f"Error searching PyPI: {str(e)}")
+            return []
+
+    def install_from_pypi(self, package_name, callback=None):
+        def log(msg):
+            if callback:
+                callback(msg)
+        
+        log(f"Installing {package_name} from PyPI...")
+        
+        try:
+            result = subprocess.run(
+                [self.python_exe, '-m', 'pip', 'install', package_name],
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            )
+            
+            if result.returncode == 0:
+                log(f"✓ {package_name} installed successfully")
+                return True
+            else:
+                log(f"✗ Error installing {package_name}")
+                log(result.stderr)
+                return False
+        except Exception as e:
+            log(f"Error: {str(e)}")
+            return False
+
+
+class PackageCache:
+    def __init__(self, cache_dir=None, max_size_mb=500):
+        if cache_dir is None:
+            cache_dir = Path(__file__).parent / "cache"
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(exist_ok=True)
+        self.max_size_bytes = max_size_mb * 1024 * 1024
+    
+    def get_cache_path(self, package_name, version=None):
+        if version:
+            return self.cache_dir / f"{package_name}-{version}.whl"
+        return self.cache_dir / f"{package_name}.whl"
+    
+    def add(self, whl_path, package_name=None, version=None):
+        whl_path = Path(whl_path)
+        
+        if package_name is None:
+            installer = WheelInstaller()
+            package_name, version = installer.get_package_info_from_whl(str(whl_path))
+        
+        if not package_name:
+            package_name = whl_path.stem.split('-')[0]
+        
+        cache_path = self.get_cache_path(package_name, version)
+        
+        import shutil
+        shutil.copy2(whl_path, cache_path)
+        
+        self._cleanup_if_needed()
+        
+        return cache_path
+    
+    def get(self, package_name, version=None):
+        cache_path = self.get_cache_path(package_name, version)
+        if cache_path.exists():
+            cache_path.touch()
+            return str(cache_path)
+        
+        for f in self.cache_dir.glob(f"{package_name}*.whl"):
+            return str(f)
+        return None
+    
+    def _get_cache_size(self):
+        total = 0
+        for f in self.cache_dir.glob("*.whl"):
+            total += f.stat().st_size
+        return total
+    
+    def _cleanup_if_needed(self):
+        current_size = self._get_cache_size()
+        
+        if current_size <= self.max_size_bytes:
+            return
+        
+        files = []
+        for f in self.cache_dir.glob("*.whl"):
+            files.append((f.stat().st_mtime, f))
+        
+        files.sort()
+        
+        for mtime, f in files:
+            if current_size <= self.max_size_bytes:
+                break
+            size = f.stat().st_size
+            f.unlink()
+            current_size -= size
+    
+    def clear(self):
+        for f in self.cache_dir.glob("*.whl"):
+            f.unlink()
+    
+    def list_cache(self):
+        result = []
+        for f in self.cache_dir.glob("*.whl"):
+            name = f.stem
+            if '-' in name and name.split('-')[-1].replace('.', '').isdigit():
+                parts = name.rsplit('-', 1)
+                result.append({'name': parts[0], 'version': parts[1] if len(parts) > 1 else 'unknown', 'path': str(f), 'size': f.stat().st_size})
+            else:
+                result.append({'name': name, 'version': 'unknown', 'path': str(f), 'size': f.stat().st_size})
+        return result

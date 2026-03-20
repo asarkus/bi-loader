@@ -5,6 +5,7 @@ import threading
 import subprocess
 import sys
 import os
+import json
 from pathlib import Path
 
 try:
@@ -13,11 +14,110 @@ try:
 except ImportError:
     DND_AVAILABLE = False
 
+try:
+    from plyer import notification
+    NOTIFICATIONS_AVAILABLE = True
+except ImportError:
+    NOTIFICATIONS_AVAILABLE = False
+
 from installer import WheelInstaller
 from i18n import (
     load_settings, save_settings, get_text, format_text, 
     LANGUAGE_NAMES, get_current_language, load_history, clear_history
 )
+
+
+class NotificationManager:
+    @staticmethod
+    def send(title, message):
+        if NOTIFICATIONS_AVAILABLE:
+            try:
+                notification.notify(title=title, message=message, timeout=5)
+            except:
+                pass
+
+
+class TitleBar:
+    def __init__(self, parent, root, title_text, settings_cmd):
+        self.root = root
+        self.parent = parent
+        self.settings_cmd = settings_cmd
+        self.is_maximized = False
+        
+        self.frame = tk.Frame(parent, bg="#1e1e1e", height=40, cursor="fleur")
+        self.frame.pack(fill=tk.X)
+        self.frame.pack_propagate(False)
+        
+        self.frame.bind("<Button-1>", self._on_drag_start)
+        self.frame.bind("<B1-Motion>", self._on_drag_motion)
+        self.frame.bind("<Double-Button-1>", self._on_double_click)
+        
+        title_label = tk.Label(
+            self.frame,
+            text=f"  {title_text}",
+            font=("Segoe UI", 12, "bold"),
+            bg="#1e1e1e",
+            fg="#ffffff"
+        )
+        title_label.pack(side=tk.LEFT, padx=(10, 0))
+        title_label.bind("<Button-1>", self._on_drag_start)
+        title_label.bind("<B1-Motion>", self._on_drag_motion)
+        title_label.bind("<Double-Button-1>", self._on_double_click)
+        
+        btn_frame = tk.Frame(self.frame, bg="#1e1e1e")
+        btn_frame.pack(side=tk.RIGHT, padx=(0, 5))
+        
+        self._create_button(btn_frame, "⚙", self._on_settings, "#1e1e1e", "#808080", "#3d3d3d", "#ffffff")
+        self._create_button(btn_frame, "□", self._on_maximize, "#1e1e1e", "#808080", "#3d3d3d", "#ffffff")
+        self._create_button(btn_frame, "✕", self._on_close, "#e81123", "#ffffff", "#c42b1c", "#ffffff")
+    
+    def _create_button(self, parent, text, cmd, bg, fg, hover_bg, hover_fg):
+        btn = tk.Label(
+            parent,
+            text=text,
+            font=("Segoe UI Symbol", 11),
+            bg=bg,
+            fg=fg,
+            width=3,
+            height=1,
+            cursor="hand2"
+        )
+        btn.pack(side=tk.LEFT)
+        
+        btn.bind("<Enter>", lambda e: btn.config(bg=hover_bg, fg=hover_fg))
+        btn.bind("<Leave>", lambda e: btn.config(bg=bg, fg=fg))
+        btn.bind("<Button-1>", lambda e: cmd())
+        
+        return btn
+    
+    def _on_drag_start(self, event):
+        self._drag_data = {"x": event.x, "y": event.y}
+    
+    def _on_drag_motion(self, event):
+        if self.is_maximized:
+            return
+        delta_x = event.x - self._drag_data["x"]
+        delta_y = event.y - self._drag_data["y"]
+        new_x = self.root.winfo_x() + delta_x
+        new_y = self.root.winfo_y() + delta_y
+        self.root.geometry(f"+{new_x}+{new_y}")
+    
+    def _on_double_click(self, event):
+        self._on_maximize()
+    
+    def _on_settings(self):
+        self.settings_cmd()
+    
+    def _on_maximize(self):
+        if self.is_maximized:
+            self.root.state("normal")
+            self.is_maximized = False
+        else:
+            self.root.state("zoomed")
+            self.is_maximized = True
+    
+    def _on_close(self):
+        self.root.destroy()
 
 
 class SplashScreen:
@@ -189,10 +289,13 @@ class LanguageScreen:
 class BILoaderApp:
     def __init__(self, root):
         self.root = root
+        self.root.overrideredirect(True)
         self.root.title(get_text("app_title"))
         self.root.geometry("800x650")
         self.root.minsize(700, 550)
         self.root.configure(bg="#1e1e1e")
+        
+        self.title_bar = TitleBar(self.root, self.root, get_text("title"), self.show_settings)
         
         self.installer = WheelInstaller()
         self.selected_files = []
@@ -202,6 +305,12 @@ class BILoaderApp:
         
         self._setup_styles()
         self._create_ui()
+    
+    def debug_log(self, message):
+        settings = load_settings()
+        if settings.get("debug_mode", False):
+            messagebox.showinfo("DEBUG", message)
+        print(f"[DEBUG] {message}")
     
     def _setup_styles(self):
         style = ttk.Style()
@@ -215,35 +324,8 @@ class BILoaderApp:
         )
     
     def _create_ui(self):
-        header_frame = tk.Frame(self.root, bg="#1e1e1e", padx=20, pady=15)
-        header_frame.pack(fill=tk.X)
-        
-        title_label = tk.Label(
-            header_frame,
-            text=get_text("title"),
-            font=("Segoe UI", 20, "bold"),
-            bg="#1e1e1e",
-            fg="#ffffff"
-        )
-        title_label.pack(side=tk.LEFT)
-        
-        settings_btn = tk.Button(
-            header_frame,
-            text="⚙",
-            font=("Segoe UI", 18),
-            bg="#1e1e1e",
-            fg="#808080",
-            activebackground="#2d2d2d",
-            activeforeground="#ffffff",
-            bd=0,
-            cursor="hand2",
-            relief="flat",
-            command=self.show_settings
-        )
-        settings_btn.pack(side=tk.RIGHT)
-        
         self.tab_frame = tk.Frame(self.root, bg="#1e1e1e")
-        self.tab_frame.pack(fill=tk.X, padx=20)
+        self.tab_frame.pack(fill=tk.X, padx=20, pady=(10, 0))
         
         tabs = ["tab_install", "tab_uninstall", "tab_update", "tab_history"]
         
@@ -363,6 +445,9 @@ class BILoaderApp:
         self.btn_select = tk.Button(btn_frame, text=get_text("select_files"), command=self.select_files, font=("Segoe UI", 11, "bold"), padx=15, pady=10, bg="#4CAF50", fg="#ffffff", activebackground="#45a049", activeforeground="#ffffff", bd=0, cursor="hand2", relief="flat")
         self.btn_select.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
 
+        self.btn_pypi = tk.Button(btn_frame, text=get_text("search_pypi"), command=self.show_pypi_search, font=("Segoe UI", 11, "bold"), padx=15, pady=10, bg="#FF9800", fg="#ffffff", activebackground="#F57C00", activeforeground="#ffffff", bd=0, cursor="hand2", relief="flat")
+        self.btn_pypi.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
+        
         self.btn_requirements = tk.Button(btn_frame, text="📄 Requirements.txt", command=self.select_requirements, font=("Segoe UI", 11, "bold"), padx=15, pady=10, bg="#9C27B0", fg="#ffffff", activebackground="#7B1FA2", activeforeground="#ffffff", bd=0, cursor="hand2", relief="flat")
         self.btn_requirements.pack(side=tk.LEFT, padx=(0, 5), fill=tk.X, expand=True)
         
@@ -436,6 +521,9 @@ class BILoaderApp:
         
         btn_frame = tk.Frame(self.content_frame, bg="#1e1e1e")
         btn_frame.pack(fill=tk.X)
+        
+        self.btn_export = tk.Button(btn_frame, text=get_text("export"), command=self.export_history, font=("Segoe UI", 11, "bold"), padx=20, pady=10, bg="#4CAF50", fg="#ffffff", activebackground="#45a049", activeforeground="#ffffff", bd=0, cursor="hand2", relief="flat")
+        self.btn_export.pack(side=tk.LEFT, padx=(0, 10))
         
         self.btn_clear_history = tk.Button(btn_frame, text=get_text("clear_history"), command=self.clear_history_click, font=("Segoe UI", 11, "bold"), padx=20, pady=10, bg="#f44336", fg="#ffffff", activebackground="#d32f2f", activeforeground="#ffffff", bd=0, cursor="hand2", relief="flat")
         self.btn_clear_history.pack(side=tk.LEFT)
@@ -798,10 +886,137 @@ class BILoaderApp:
             clear_history()
             self.load_history()
     
+    def export_history(self):
+        history = load_history()
+        if not history:
+            messagebox.showwarning(get_text("ready"), get_text("no_history"))
+            return
+        
+        export_window = tk.Toplevel(self.root)
+        export_window.title(get_text("export_history"))
+        export_window.geometry("300x200")
+        export_window.configure(bg="#1e1e1e")
+        
+        export_window.transient(self.root)
+        export_window.grab_set()
+        
+        frame = tk.Frame(export_window, bg="#1e1e1e", padx=20, pady=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        label = tk.Label(frame, text=get_text("select_format"), font=("Segoe UI", 12), bg="#1e1e1e", fg="#ffffff")
+        label.pack(pady=(0, 15))
+        
+        def export_as(fmt):
+            if fmt == "txt":
+                file_path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text files", "*.txt")])
+                if file_path:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        for item in history:
+                            f.write(f"{item['name']}=={item['version']}\n")
+            elif fmt == "json":
+                file_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON files", "*.json")])
+                if file_path:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        json.dump(history, f, indent=4)
+            elif fmt == "csv":
+                file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+                if file_path:
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write("Date,Package,Version\n")
+                        for item in history:
+                            f.write(f"{item['date']},{item['name']},{item['version']}\n")
+            
+            if file_path:
+                NotificationManager.send("BI Loader", get_text("export_success"))
+                messagebox.showinfo(get_text("export_history"), get_text("export_success"))
+                export_window.destroy()
+        
+        btn_txt = tk.Button(frame, text=get_text("txt_format"), command=lambda: export_as("txt"), font=("Segoe UI", 11), bg="#2d2d2d", fg="#ffffff", activebackground="#3d3d3d", bd=0, padx=20, pady=10, cursor="hand2", relief="flat")
+        btn_txt.pack(fill=tk.X, pady=5)
+        
+        btn_json = tk.Button(frame, text=get_text("json_format"), command=lambda: export_as("json"), font=("Segoe UI", 11), bg="#2d2d2d", fg="#ffffff", activebackground="#3d3d3d", bd=0, padx=20, pady=10, cursor="hand2", relief="flat")
+        btn_json.pack(fill=tk.X, pady=5)
+        
+        btn_csv = tk.Button(frame, text=get_text("csv_format"), command=lambda: export_as("csv"), font=("Segoe UI", 11), bg="#2d2d2d", fg="#ffffff", activebackground="#3d3d3d", bd=0, padx=20, pady=10, cursor="hand2", relief="flat")
+        btn_csv.pack(fill=tk.X, pady=5)
+    
+    def show_pypi_search(self):
+        search_window = tk.Toplevel(self.root)
+        search_window.title(get_text("search_pypi"))
+        search_window.geometry("500x450")
+        search_window.configure(bg="#1e1e1e")
+        
+        search_window.transient(self.root)
+        search_window.grab_set()
+        
+        frame = tk.Frame(search_window, bg="#1e1e1e", padx=20, pady=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        hint_label = tk.Label(frame, text=get_text("search_hint"), font=("Segoe UI", 10), bg="#1e1e1e", fg="#808080")
+        hint_label.pack(pady=(0, 5))
+        
+        self.search_var = tk.StringVar()
+        search_entry = tk.Entry(frame, textvariable=self.search_var, font=("Segoe UI", 12), bg="#2d2d2d", fg="#ffffff", insertbackground="white", relief="flat", bd=0)
+        search_entry.pack(fill=tk.X, ipadx=10, ipady=8, pady=(0, 10))
+        
+        def do_search():
+            query = self.search_var.get().strip()
+            if not query:
+                return
+            
+            results_list.delete(0, tk.END)
+            results_list.insert(tk.END, "Searching...")
+            search_window.update()
+            
+            results = self.installer.search_pypi(query)
+            
+            results_list.delete(0, tk.END)
+            
+            if not results:
+                results_list.insert(tk.END, get_text("no_results"))
+            else:
+                for r in results:
+                    name = r.get('name', 'unknown')
+                    version = r.get('version', 'unknown')
+                    results_list.insert(tk.END, f"{name} ({version})")
+        
+        search_btn = tk.Button(frame, text=get_text("search"), command=do_search, font=("Segoe UI", 11, "bold"), bg="#FF9800", fg="#ffffff", activebackground="#F57C00", bd=0, padx=20, pady=8, cursor="hand2", relief="flat")
+        search_btn.pack(fill=tk.X, pady=(0, 10))
+        
+        results_list = tk.Listbox(frame, font=("Segoe UI", 11), bg="#2d2d2d", fg="#ffffff", selectbackground="#FF9800", selectforeground="#ffffff", bd=0, relief="flat")
+        results_list.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        def install_selected():
+            selection = results_list.curselection()
+            if not selection:
+                return
+            
+            pkg_text = results_list.get(selection[0])
+            if pkg_text in [get_text("no_results"), "Searching..."]:
+                return
+            
+            pkg_name = pkg_text.split(" (")[0]
+            
+            search_btn.config(state=tk.DISABLED)
+            search_window.update()
+            
+            success = self.installer.install_from_pypi(pkg_name, callback=self.log)
+            
+            if success:
+                NotificationManager.send("BI Loader", f"{pkg_name} installed")
+                self.log(f"✓ {pkg_name} installed from PyPI", "success")
+            else:
+                self.log(f"✗ Error installing {pkg_name}", "error")
+            
+            search_btn.config(state=tk.NORMAL)
+        
+        install_btn = tk.Button(frame, text=get_text("install_selected"), command=install_selected, font=("Segoe UI", 11, "bold"), bg="#4CAF50", fg="#ffffff", activebackground="#45a049", bd=0, padx=20, pady=10, cursor="hand2", relief="flat")
+        install_btn.pack(fill=tk.X)
+    
     def show_settings(self):
         settings_window = tk.Toplevel(self.root)
         settings_window.title(get_text("settings"))
-        settings_window.geometry("320x320")
+        settings_window.geometry("320x400")
         settings_window.resizable(False, False)
         settings_window.configure(bg="#1e1e1e")
         
@@ -814,12 +1029,87 @@ class BILoaderApp:
         title = tk.Label(frame, text=get_text("settings"), font=("Segoe UI", 16, "bold"), bg="#1e1e1e", fg="#ffffff")
         title.pack(pady=(0, 20))
         
+        settings = load_settings()
+        notifications_enabled = settings.get("notifications", True)
+        
+        self.notif_var = tk.BooleanVar(value=notifications_enabled)
+        
+        notif_row = tk.Frame(frame, bg="#1e1e1e")
+        notif_row.pack(fill=tk.X, pady=(0, 20))
+        
+        notif_label = tk.Label(notif_row, text=get_text("notifications"), font=("Segoe UI", 12), bg="#1e1e1e", fg="#808080")
+        notif_label.pack(side=tk.LEFT)
+        
+        class ToggleSwitch:
+            def __init__(self, parent, var, on_change):
+                self.var = var
+                self.on_change = on_change
+                self.canvas = tk.Canvas(parent, width=40, height=22, bg="#1e1e1e", highlightthickness=0, cursor="hand2")
+                self.canvas.pack(side=tk.RIGHT)
+                
+                self.bg_off = "#4a4a4a"
+                self.bg_on = "#2196F3"
+                
+                self.draw_rounded_rect(1, 1, 39, 21, 10, self.bg_off)
+                self.knob = self.canvas.create_oval(3, 3, 19, 19, fill="#ffffff", outline="")
+                
+                self.canvas.bind("<Button-1>", self.click)
+                self.update_state()
+            
+            def draw_rounded_rect(self, x1, y1, x2, y2, r, color):
+                self.canvas.create_arc((x1, y1, x1 + 2*r, y1 + 2*r), start=90, extent=180, fill=color, outline="")
+                self.canvas.create_arc((x2 - 2*r, y2 - 2*r, x2, y2), start=270, extent=180, fill=color, outline="")
+                self.canvas.create_rectangle((x1 + r, y1, x2 - r, y2), fill=color, outline="")
+            
+            def click(self, event=None):
+                self.var.set(not self.var.get())
+                self.update_state()
+                self.on_change()
+            
+            def update_state(self):
+                self.canvas.delete("all")
+                if self.var.get():
+                    self.draw_rounded_rect(1, 1, 39, 21, 10, self.bg_on)
+                    self.knob = self.canvas.create_oval(21, 3, 37, 19, fill="#ffffff", outline="")
+                else:
+                    self.draw_rounded_rect(1, 1, 39, 21, 10, self.bg_off)
+                    self.knob = self.canvas.create_oval(3, 3, 19, 19, fill="#ffffff", outline="")
+        
+        def toggle_notifications():
+            settings = load_settings()
+            settings["notifications"] = self.notif_var.get()
+            save_settings(settings)
+        
+        toggle = ToggleSwitch(notif_row, self.notif_var, toggle_notifications)
+        
+        debug_row = tk.Frame(frame, bg="#1e1e1e")
+        debug_row.pack(fill=tk.X, pady=(0, 20))
+        
+        debug_label = tk.Label(debug_row, text=get_text("debug_mode"), font=("Segoe UI", 12), bg="#1e1e1e", fg="#808080")
+        debug_label.pack(side=tk.LEFT)
+        
+        debug_enabled = settings.get("debug_mode", False)
+        self.debug_var = tk.BooleanVar(value=debug_enabled)
+        
+        def toggle_debug():
+            settings = load_settings()
+            settings["debug_mode"] = self.debug_var.get()
+            save_settings(settings)
+        
+        debug_toggle = ToggleSwitch(debug_row, self.debug_var, toggle_debug)
+        
+        debug_hint = tk.Label(frame, text=get_text("debug_hint"), font=("Segoe UI", 9), bg="#1e1e1e", fg="#666666")
+        debug_hint.pack(anchor="w", pady=(0, 20))
+        
         lang_label = tk.Label(frame, text=get_text("language"), font=("Segoe UI", 12), bg="#1e1e1e", fg="#808080")
         lang_label.pack(anchor="w", pady=(0, 10))
         
+        lang_frame = tk.Frame(frame, bg="#1e1e1e")
+        lang_frame.pack(fill=tk.X, pady=(0, 20))
+        
         for lang_code, lang_name in LANGUAGE_NAMES:
-            btn = tk.Button(frame, text=lang_name, font=("Segoe UI", 11), bg="#2d2d2d", fg="#ffffff", activebackground="#3d3d3d", activeforeground="#ffffff", bd=0, padx=20, pady=10, cursor="hand2", relief="flat", command=lambda c=lang_code: self.change_language(c, settings_window))
-            btn.pack(fill=tk.X, pady=5)
+            btn = tk.Button(lang_frame, text=lang_name, font=("Segoe UI", 10), bg="#2d2d2d", fg="#ffffff", activebackground="#3d3d3d", activeforeground="#ffffff", bd=0, padx=15, pady=8, cursor="hand2", relief="flat", command=lambda c=lang_code: self.change_language(c, settings_window))
+            btn.pack(side=tk.LEFT, padx=(0, 5), expand=True, fill=tk.X)
         
         close_btn = tk.Button(frame, text=get_text("exit"), font=("Segoe UI", 11), bg="#2196F3", fg="#ffffff", activebackground="#1976D2", activeforeground="#ffffff", bd=0, padx=20, pady=10, cursor="hand2", relief="flat", command=settings_window.destroy)
         close_btn.pack(fill=tk.X, pady=(20, 0))

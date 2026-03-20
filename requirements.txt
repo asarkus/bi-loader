@@ -1,5 +1,9 @@
 # UI dependencies
 tkinterdnd2>=0.3.0
+plyer>=2.1.0
+
+# HTTP requests for PyPI
+requests>=2.28.0
 
 # Build dependencies
 pyinstaller>=6.0
